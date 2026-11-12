@@ -277,3 +277,93 @@ s_0 = (a_1, \text{List}(a_2, \ldots, a_k)) \implies a_1 = f(\text{List}(a_1))
 $k$ iteraciones, $l = \text{List}()$.
 
 Esto implica que $P_f(L) == \text{maxAux}(L.\text{head}, L.\text{tail}) == f(L)$
+
+## Punto 1
+ 
+### `fuertes`
+ 
+**Especificación:**
+$\text{fuertes}(R, u) = [\text{reg}(s) \mid s \in R,\ \text{mag}(s) > u]$, en el
+mismo orden de $R$.
+ 
+**Inducción estructural sobre $R$** (el `for` traducido es `map` sobre `filter`):
+ 
+- **Caso base**, $R = []$: no hay sismos, el `for` devuelve $[]$, que es el
+  valor de la especificación.
+- **Paso**, $R = s :: R'$. Por hipótesis de inducción,
+  $\text{fuertes}(R', u)$ es correcto. Si $\text{mag}(s) > u$, el sismo pasa el
+  filtro y su región queda al frente: $\text{reg}(s) :: \text{fuertes}(R', u)$.
+  Si no, se descarta y queda $\text{fuertes}(R', u)$. En ambos casos coincide con
+  la especificación.
+### `enRegion`
+ 
+Es el mismo argumento con la condición $\text{reg}(s) = g$ y la proyección
+$\text{mag}(s)$:
+ 
+$$\text{enRegion}(R, g) = [\text{mag}(s) \mid s \in R,\ \text{reg}(s) = g]$$
+ 
+### `paresCercanos`
+ 
+Sea $\text{Reg}(R)$ la lista de regiones sin repetir, en orden de aparición, y
+sea $M_g = \text{enRegion}(R, g)$. Definimos
+ 
+$$\text{cerca}(a, b) \iff \exists\, x \in M_a,\ \exists\, y \in M_b : |x - y| \le d$$
+ 
+**Especificación:**
+$\text{paresCercanos}(R, d) = [(a, b) \mid a, b \in \text{Reg}(R),\ \text{pos}(a) < \text{pos}(b),\ \text{cerca}(a, b)]$.
+ 
+**Argumento:**
+ 
+1. *`hayCercanos(a, b)` equivale a `cerca(a, b)`.* El `for` interno genera un
+   elemento por cada par $(x, y)$ con $|x-y| \le d$. La lista es no vacía si y
+   solo si existe al menos un par así.
+2. *Cada pareja sale una sola vez.* El `for` externo exige
+   $\text{pos}(a) < \text{pos}(b)$. Para dos regiones distintas $a \ne b$ solo
+   uno de los órdenes $(a,b)$ o $(b,a)$ cumple esa desigualdad, y para $a = b$
+   no se cumple nunca. Por eso no hay repetidas ni parejas de una región
+   consigo misma.
+3. *Orden.* Los dos generadores recorren `regiones` en orden de aparición, así
+   que las parejas salen ordenadas por la posición de la primera región y luego
+   de la segunda.
+## Punto 2
+ 
+### `porRegion`
+ 
+**Especificación:** para cada región $g \in \text{Reg}(R)$,
+ 
+$$\text{porRegion}(R)(g) = [s \in R \mid \text{reg}(s) = g]$$
+ 
+y las regiones que no están en $R$ no son llaves. `groupBy` construye
+exactamente ese mapa: una llave por cada valor distinto de $\text{reg}(s)$ y,
+dentro de cada llave, los sismos en su orden original.
+ 
+### `conteoPorRegion` y `magnitudMaxima`
+ 
+Ambas transforman el valor de cada llave de `porRegion`:
+ 
+$$\text{conteoPorRegion}(R)(g) = \left|\{s \in R \mid \text{reg}(s) = g\}\right|$$
+ 
+$$\text{magnitudMaxima}(R)(g) = \max\{\text{mag}(s) \mid s \in R,\ \text{reg}(s) = g\}$$
+ 
+El máximo está bien definido porque todo $g$ que es llave tiene al menos un
+sismo (si no hubiera sismos de $g$, $g$ no sería llave). Con el registro vacío
+ambos mapas quedan vacíos.
+ 
+### El resultado no depende del orden de recorrido
+ 
+Sea $\pi(R)$ cualquier reordenamiento de $R$. Se cumple:
+ 
+$$\text{conteoPorRegion}(\pi(R)) = \text{conteoPorRegion}(R)
+\qquad
+\text{magnitudMaxima}(\pi(R)) = \text{magnitudMaxima}(R)$$
+ 
+**Razón:** los dos valores se definen con conjuntos (multiconjuntos) de sismos
+de cada región, y estos no cambian al reordenar. El tamaño de un multiconjunto
+no depende del orden, y el máximo es una operación conmutativa y asociativa:
+$\max(a, b) = \max(b, a)$ y $\max(\max(a,b),c) = \max(a,\max(b,c))$. Por eso
+cualquier orden de recorrido da el mismo mapa.
+ 
+(La lista de sismos dentro de `porRegion` sí conserva el orden del registro, y
+por eso `porRegion` no cumple esta propiedad como igualdad de listas; solo la
+cumplen los resultados de los dos resúmenes.)
+ 

@@ -12,22 +12,56 @@ class RegistroSismico {
 
   // Punto 1: consultas con expresiones for --------------------------------------
 
-  /** Las regiones de los sismos que superan el umbral, en orden y con repetidos. */
-  def fuertes(r: Registro, umbral: Double): List[String] = ???
+/** Las regiones de los sismos que superan el umbral, en orden y con repetidos. */
+  def fuertes(r: Registro, umbral: Double): List[String] =
+    for {
+      s <- r                    // recorre cada sismo
+      if s.magnitud > umbral    // se queda solo con los que superan el umbral
+    } yield s.region            // y de cada uno devuelve su región
 
   /** Las magnitudes registradas en una región. */
-  def enRegion(r: Registro, region: String): List[Double] = ???
+  def enRegion(r: Registro, region: String): List[Double] =
+    for {
+      s <- r                    // recorre cada sismo
+      if s.region == region     // se queda solo con los de esa región
+    } yield s.magnitud          // y de cada uno devuelve su magnitud
 
   /** Parejas de regiones distintas con algún sismo de magnitudes cercanas. */
-  def paresCercanos(r: Registro, dif: Double): List[(String, String)] = ???
+  def paresCercanos(r: Registro, dif: Double): List[(String, String)] = {
+    // Regiones sin repetir, en el orden en que aparecen en el registro,
+    // cada una con su posición (0, 1, 2, ...).
+    val regiones = r.map(_.region).distinct.zipWithIndex
+
+    // Dice si hay un sismo de la región a y uno de la región b con magnitudes
+    // que difieren a lo sumo dif.
+    def hayCercanos(a: String, b: String): Boolean =
+      (for {
+        x <- enRegion(r, a)
+        y <- enRegion(r, b)
+        if Math.abs(x - y) <= dif
+      } yield 1).nonEmpty
+
+    for {
+      (a, i) <- regiones
+      (b, j) <- regiones
+      if i < j                  // a aparece antes que b: la pareja sale una sola vez
+      if hayCercanos(a, b)
+    } yield (a, b)
+  }
 
   // Punto 2: agrupar con mapas --------------------------------------------------
 
-  def porRegion(r: Registro): Map[String, List[Sismo]] = ???
+/** Agrupa los sismos por región: región -> sus sismos. */
+  def porRegion(r: Registro): Map[String, List[Sismo]] =
+    r.groupBy(s => s.region)
 
-  def conteoPorRegion(r: Registro): Map[String, Int] = ???
+  /** Cuántos sismos hay en cada región. */
+  def conteoPorRegion(r: Registro): Map[String, Int] =
+    porRegion(r).map { case (region, sismos) => (region, sismos.length) }
 
-  def magnitudMaxima(r: Registro): Map[String, Double] = ???
+  /** La mayor magnitud de cada región. */
+  def magnitudMaxima(r: Registro): Map[String, Double] =
+    porRegion(r).map { case (region, sismos) => (region, sismos.map(s => s.magnitud).max) }
 
   // Punto 3: consultas seguras --------------------------------------------------
 
