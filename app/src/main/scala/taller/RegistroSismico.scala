@@ -66,13 +66,18 @@ class RegistroSismico {
   // Punto 3: consultas seguras --------------------------------------------------
 
   /** Un mapa que responde cero por las regiones que no están en el registro. */
-  def conteoSeguro(r: Registro): Map[String, Int] = ???
+  def conteoSeguro(r: Registro): Map[String, Int] =
+    conteoPorRegion(r).withDefaultValue(0)   // llave ausente -> 0, sin excepción
 
   /** La magnitud máxima de una región, o vacío si no hay registros suyos. */
-  def maximaDe(r: Registro, region: String): Option[Double] = ???
+  def maximaDe(r: Registro, region: String): Option[Double] =
+    magnitudMaxima(r).get(region)            // Some(max) si la llave existe, None si no
 
   /** La región con más sismos; en empate, la primera en orden alfabético. */
-  def regionMasActiva(r: Registro): Option[String] = ???
+  def regionMasActiva(r: Registro): Option[String] =
+    conteoPorRegion(r)
+      .minByOption { case (region, n) => (-n, region) }  // más sismos; en empate, alfabético
+      .map { case (region, _) => region }
 
   // Punto 4: réplicas perezosas -------------------------------------------------
 
@@ -89,5 +94,9 @@ class RegistroSismico {
   // Punto 5: informe combinado --------------------------------------------------
 
   /** Conteo, magnitud máxima y réplicas esperadas del sismo más fuerte, por región. */
-  def informe(r: Registro, minimo: Double): Map[String, Resumen] = ???
+  def informe(r: Registro, minimo: Double): Map[String, Resumen] =
+    porRegion(r).map { case (region, sismos) =>
+      val maxima = sismos.map(s => s.magnitud).max
+      (region, Resumen(sismos.length, maxima, replicasSensibles(maxima, minimo).length))
+    }
 }
