@@ -367,3 +367,103 @@ cualquier orden de recorrido da el mismo mapa.
 por eso `porRegion` no cumple esta propiedad como igualdad de listas; solo la
 cumplen los resultados de los dos resúmenes.)
  
+
+
+
+## Punto 4
+
+### `replicas`
+
+**Especificación:**
+
+Sea $r(x)$ la función de redondeo a dos decimales:
+
+$$
+r(x)=\frac{\operatorname{round}(100x)}{100}
+$$
+
+La secuencia de réplicas se define mediante:
+
+$$
+x_0=m
+$$
+
+$$
+x_{n+1}=r(0.8x_n)
+$$
+
+Por tanto:
+
+$$
+\text{replicas}(m)=[x_0,x_1,x_2,x_3,\ldots]
+$$
+
+**Argumento de corrección:**
+
+La implementación utiliza:
+
+```scala
+magnitud #:: replicas(redondear(magnitud * 0.8))
+```
+
+1. **Caso inicial.** El operador `#::` coloca la magnitud recibida como primer elemento de la secuencia. Por tanto, el primer elemento siempre es $x_0=m$.
+
+2. **Paso recursivo.** La cola de la secuencia se obtiene llamando nuevamente a `replicas`, pero con la magnitud actual multiplicada por $0.8$ y redondeada. Así, cada nuevo elemento cumple la relación $x_{n+1}=r(0.8x_n)$.
+
+3. **Evaluación perezosa.** Como se utiliza `LazyList`, los elementos siguientes no se calculan hasta que se necesitan. La secuencia puede ser infinita sin construir todos sus elementos en memoria. Por ejemplo, `take(4)` obtiene únicamente los primeros cuatro elementos.
+
+Por inducción sobre la posición de los elementos, cada elemento generado corresponde a la especificación de la secuencia.
+
+### `replicasSensibles`
+
+**Especificación:**
+
+La función devuelve la parte inicial de `replicas(m)` cuyos elementos superan estrictamente el mínimo $u$:
+
+$$
+\text{replicasSensibles}(m,u)
+=
+[x_n \mid x_n \in \text{replicas}(m),\ x_n>u]
+$$
+
+**Argumento de corrección:**
+
+La implementación utiliza:
+
+```scala
+replicas(magnitud).takeWhile(_ > minimo).toList
+```
+
+1. **Filtrado.** `takeWhile` conserva los elementos consecutivos que cumplen la condición $x_n>u$.
+
+2. **Exclusión del límite.** Cuando aparece un elemento menor o igual que $u$, la secuencia se detiene. Por tanto, ningún elemento igual al mínimo queda incluido.
+
+3. **Conversión a lista.** `toList` convierte los elementos seleccionados en una lista ordinaria, conservando su orden.
+
+Si la magnitud inicial no supera el mínimo, el resultado es la lista vacía. Para magnitudes positivas y un mínimo no negativo, la secuencia termina incluyendo únicamente los valores que superan dicho mínimo.
+
+### Evaluación perezosa y terminación
+
+La función `replicas` produce una secuencia infinita, pero esto no implica que todos sus elementos deban calcularse.
+
+La evaluación perezosa permite solicitar solamente la cantidad necesaria de elementos. Por ejemplo:
+
+$$
+\text{replicas}(5.0).take(4)
+=
+[5.0,4.0,3.2,2.56]
+$$
+
+En `replicasSensibles`, `takeWhile` permite detener el recorrido cuando se encuentra el primer valor que no supera el mínimo, evitando recorrer innecesariamente el resto de la secuencia.
+
+### Pruebas propias
+
+Se realizaron siete pruebas unitarias para verificar:
+
+1. Que `replicas` genere correctamente los valores sucesivos.
+2. Que conserve la magnitud inicial sin modificarla.
+3. Que permita obtener una cantidad limitada de elementos de la secuencia infinita.
+4. Que `replicasSensibles` se detenga cuando los valores dejan de superar el mínimo.
+5. Que excluya los valores iguales al mínimo.
+6. Que cada nueva magnitud se redondee a dos decimales.
+7. Que devuelva una lista vacía cuando la magnitud inicial no supera el mínimo.

@@ -295,3 +295,143 @@ flowchart LR
 ```
  
 
+
+## Punto 4: generación de réplicas con evaluación perezosa
+
+### Idea general
+
+En este punto se utilizan dos funciones para generar una secuencia de magnitudes sísmicas cada vez menores.
+
+La primera función, `replicas`, genera una secuencia potencialmente infinita. Cada nuevo valor corresponde al 80% del anterior, redondeado a dos decimales.
+
+La segunda función, `replicasSensibles`, utiliza esa secuencia y conserva únicamente los valores que superan un mínimo indicado.
+
+Para implementar este comportamiento se utiliza `LazyList`, una colección de Scala que permite calcular sus elementos solamente cuando son necesarios.
+
+### `redondear(x)`
+
+```scala
+def redondear(x: Double): Double =
+  Math.round(x * 100.0) / 100.0
+```
+
+Esta función redondea un número a dos decimales.
+
+Primero multiplica el valor por 100, después utiliza `Math.round` para redondearlo al entero más cercano y finalmente divide entre 100.
+
+Por ejemplo:
+
+```text
+redondear(4.096) = 4.10
+redondear(2.567) = 2.57
+```
+
+Se utiliza para evitar que las magnitudes de las réplicas tengan más de dos decimales.
+
+### `replicas(magnitud)`
+
+```scala
+def replicas(magnitud: Double): LazyList[Double] =
+  magnitud #:: replicas(redondear(magnitud * 0.8))
+```
+
+Esta función genera una secuencia de magnitudes a partir del valor recibido.
+
+El operador `#::` permite construir una `LazyList` colocando primero el valor actual y después otra secuencia que se calcula de manera perezosa.
+
+El procedimiento es:
+
+1. Se recibe la magnitud inicial.
+2. Se coloca esa magnitud como primer elemento.
+3. Se multiplica por 0.8 y se redondea a dos decimales.
+4. Se llama nuevamente a `replicas` con el resultado obtenido.
+5. El proceso continúa generando nuevos elementos cuando se solicitan.
+
+Traza con `replicas(5.0)`:
+
+| Iteración | Operación | Resultado |
+|---|---|---|
+| 0 | Magnitud inicial | 5.0 |
+| 1 | 5.0 × 0.8 | 4.0 |
+| 2 | 4.0 × 0.8 | 3.2 |
+| 3 | 3.2 × 0.8 | 2.56 |
+| 4 | 2.56 × 0.8 | 2.05 |
+
+Por tanto:
+
+```scala
+replicas(5.0).take(4).toList
+```
+
+Devuelve:
+
+```scala
+List(5.0, 4.0, 3.2, 2.56)
+```
+
+**Evaluación perezosa:**
+
+La secuencia no se construye completamente desde el principio. Solamente se calculan los elementos que se necesitan.
+
+Por ejemplo, `take(4)` solicita los primeros cuatro elementos y no necesita recorrer el resto de la secuencia infinita.
+
+### `replicasSensibles(magnitud, minimo)`
+
+```scala
+def replicasSensibles(magnitud: Double, minimo: Double): List[Double] =
+  replicas(magnitud).takeWhile(_ > minimo).toList
+```
+
+Esta función utiliza la secuencia generada por `replicas` y selecciona los valores que superan estrictamente el mínimo.
+
+Se utilizan dos operaciones:
+
+- `takeWhile(_ > minimo)`: conserva los elementos consecutivos que cumplen la condición. Cuando encuentra el primero que no la cumple, detiene el recorrido.
+- `toList`: convierte los elementos seleccionados en una lista normal.
+
+Traza con `replicasSensibles(5.0, 3.0)`:
+
+| Magnitud | ¿Supera el mínimo de 3.0? | Acción |
+|---|---|---|
+| 5.0 | Sí | Se incluye |
+| 4.0 | Sí | Se incluye |
+| 3.2 | Sí | Se incluye |
+| 2.56 | No | Se detiene |
+
+Resultado:
+
+```scala
+List(5.0, 4.0, 3.2)
+```
+
+Si la magnitud inicial no supera el mínimo, el resultado es `List()` porque `takeWhile` no encuentra ningún elemento que cumpla la condición.
+
+### Flujo de funcionamiento
+
+```mermaid
+flowchart TD
+    A["Magnitud inicial"] --> B["replicas"]
+    B --> C["Colocar magnitud actual"]
+    C --> D["Multiplicar por 0.8"]
+    D --> E["Redondear a dos decimales"]
+    E --> F["Generar siguiente elemento"]
+    F --> B
+    B --> G["replicasSensibles"]
+    G --> H{"¿Magnitud > mínimo?"}
+    H -->|Sí| I["Incluir magnitud"]
+    I --> H
+    H -->|No| J["Detener recorrido"]
+    J --> K["Convertir a List"]
+```
+
+### Pruebas propias del punto 4
+
+Se agregaron siete pruebas unitarias para comprobar diferentes comportamientos:
+
+1. **Secuencia correcta:** verifica que las magnitudes se calculen correctamente a partir de la magnitud inicial.
+2. **Magnitud inicial:** comprueba que el primer elemento conserve exactamente el valor recibido.
+3. **Evaluación perezosa:** solicita 150 elementos de la secuencia y comprueba que se puedan obtener sin recorrerla completamente.
+4. **Detención por mínimo:** verifica que `replicasSensibles` se detenga cuando una magnitud deja de superar el mínimo.
+5. **Exclusión del mínimo:** comprueba que los valores iguales al mínimo no sean incluidos.
+6. **Redondeo:** verifica que las nuevas magnitudes se redondeen a dos decimales.
+7. **Lista vacía:** comprueba que se devuelva una lista vacía cuando la magnitud inicial no supera el mínimo.
