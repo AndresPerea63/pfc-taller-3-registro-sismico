@@ -296,6 +296,87 @@ flowchart LR
  
 
 
+## Punto 3: consultas seguras
+
+Un `Map` de Scala lanza `NoSuchElementException` si se le pide una llave que no
+tiene. Las tres funciones de este punto evitan esa excepción de dos maneras
+distintas: con un **valor por defecto** (`conteoSeguro`) y con el tipo `Option`
+(`maximaDe` y `regionMasActiva`). Ninguna usa `for`: se apoyan en los mapas del
+punto 2.
+
+### `conteoSeguro(r)`
+
+```scala
+conteoPorRegion(r).withDefaultValue(0)
+```
+
+`withDefaultValue(0)` envuelve el mapa en otro que responde `0` cuando la llave
+no está. No agrega llaves: solo cambia lo que devuelve `apply` cuando falta una.
+
+Traza con `conteoSeguro(registro)("Amazonas")`:
+
+1. `conteoPorRegion(registro)` da `Map("Valle" -> 3, "Santander" -> 2, "Choco" -> 2)`.
+2. `withDefaultValue(0)` devuelve el mismo mapa con el valor por defecto 0.
+3. `("Amazonas")` busca la llave, no la encuentra y devuelve `0`.
+4. Con `("Valle")` la llave sí existe y devuelve `3`.
+
+### `maximaDe(r, region)`
+
+```scala
+magnitudMaxima(r).get(region)
+```
+
+`get` es la versión segura de `apply`: devuelve `Some(valor)` si la llave existe
+y `None` si no. Como `magnitudMaxima` solo tiene llaves de regiones con al menos
+un sismo, `None` significa exactamente "no hay registros de esa región".
+
+Traza: con `"Choco"`, `magnitudMaxima(registro)` es
+`Map("Valle" -> 5.3, "Santander" -> 5.1, "Choco" -> 6.0)` y `get("Choco")` da
+`Some(6.0)`. Con `"Amazonas"` la llave no está y da `None`.
+
+### `regionMasActiva(r)`
+
+```scala
+conteoPorRegion(r)
+  .minByOption { case (region, n) => (-n, region) }
+  .map { case (region, _) => region }
+```
+
+Se necesita la región con **más** sismos y, si hay empate, la primera en orden
+alfabético. Las dos reglas se resuelven con un solo criterio: `minByOption`
+elige el elemento cuya clave `(-n, region)` es la menor. Las claves se comparan
+en orden lexicográfico:
+
+1. Primero se compara `-n`. El menor `-n` es el mayor conteo `n`.
+2. Si los conteos empatan, se compara `region`, y gana el menor nombre en orden
+   alfabético.
+
+`minByOption` devuelve `Option`: `None` si el mapa está vacío (registro vacío) y
+`Some(elemento)` si no. Por eso no hace falta preguntar `isEmpty` ni usar `head`.
+
+Traza con `regionMasActiva(registro)`:
+
+| Región | Conteo `n` | Clave `(-n, region)` |
+|---|---|---|
+| Valle | 3 | `(-3, "Valle")` |
+| Santander | 2 | `(-2, "Santander")` |
+| Choco | 2 | `(-2, "Choco")` |
+
+La clave menor es `(-3, "Valle")`, así que el resultado es `Some("Valle")`.
+
+Traza de un empate, `Zulia` y `Arauca` con un sismo cada una: las claves son
+`(-1, "Zulia")` y `(-1, "Arauca")`. Los primeros componentes son iguales, y
+`"Arauca" < "Zulia"`, así que gana `Some("Arauca")`. Con `List()` el mapa está
+vacío y el resultado es `None`.
+
+```mermaid
+flowchart LR
+    R["Registro"] --> C["conteoPorRegion"]
+    C --> CS["withDefaultValue(0) → conteoSeguro"]
+    C --> MX["magnitudMaxima(r).get(region) → maximaDe"]
+    C --> MA["minByOption (-n, region) → regionMasActiva"]
+```
+
 ## Punto 4: generación de réplicas con evaluación perezosa
 
 ### Idea general
@@ -435,3 +516,90 @@ Se agregaron siete pruebas unitarias para comprobar diferentes comportamientos:
 5. **Exclusión del mínimo:** comprueba que los valores iguales al mínimo no sean incluidos.
 6. **Redondeo:** verifica que las nuevas magnitudes se redondeen a dos decimales.
 7. **Lista vacía:** comprueba que se devuelva una lista vacía cuando la magnitud inicial no supera el mínimo.
+
+
+## Punto 5: informe combinado
+
+### `informe(r, minimo)`
+
+```scala
+porRegion(r).map { case (region, sismos) =>
+  val maxima = sismos.map(s => s.magnitud).max
+  (region, Resumen(sismos.length, maxima, replicasSensibles(maxima, minimo).length))
+}
+```
+
+La función no recorre el registro a mano: parte del mapa `porRegion` (punto 2) y
+transforma cada pareja `(región, lista de sismos)` en una pareja
+`(región, Resumen)`. Para cada región:
+
+1. `sismos.length` es el número de sismos (`sismos` del `Resumen`).
+2. `sismos.map(s => s.magnitud).max` es la magnitud del sismo más fuerte
+   (`maxima`). El `max` no falla porque cada llave de `porRegion` tiene al menos
+   un sismo.
+3. `replicasSensibles(maxima, minimo)` (punto 4) es la lista de réplicas que
+   superan el mínimo, y su `length` es el número de réplicas esperadas
+   (`replicas`).
+
+Traza con `informe(registro, 3.0)`:
+
+| Región | Sismos | Máxima | Réplicas desde la máxima (> 3.0) | Cuántas |
+|---|---|---|---|---|
+| Valle | 3 | 5.3 | 5.3, 4.24, 3.39 (la siguiente, 2.71, no supera 3.0) | 3 |
+| Santander | 2 | 5.1 | 5.1, 4.08, 3.26 (la siguiente, 2.61, no supera 3.0) | 3 |
+| Choco | 2 | 6.0 | 6.0, 4.8, 3.84, 3.07 (la siguiente, 2.46, no supera 3.0) | 4 |
+
+Resultado: `Map("Valle" -> Resumen(3, 5.3, 3), "Santander" -> Resumen(2, 5.1, 3), "Choco" -> Resumen(2, 6.0, 4))`.
+Con `List()`, `porRegion` es `Map()` y `Map().map(...)` es `Map()`.
+
+Las réplicas se calculan sobre el sismo más fuerte, no sobre el primero de la
+región: en una región cuyo primer sismo es de 4.0 y el más fuerte es de 7.0, se
+usa 7.0.
+
+```mermaid
+flowchart TD
+    R["Registro"] --> PR["porRegion (groupBy)"]
+    PR --> L["Para cada región: lista de sismos"]
+    L --> N["length → sismos"]
+    L --> M["map(magnitud).max → maxima"]
+    M --> RS["replicasSensibles(maxima, minimo).length → replicas"]
+    N --> RES["Resumen(sismos, maxima, replicas)"]
+    M --> RES
+    RS --> RES
+```
+
+## Por qué la secuencia perezosa no agota la memoria
+
+`replicas(magnitud)` se define como `magnitud #:: replicas(redondear(magnitud * 0.8))`.
+El operador `#::` recibe su cola **por nombre**: no la evalúa al construir la
+secuencia, sino que guarda una receta (un *thunk*) para calcularla cuando alguien
+la pida. Una `LazyList` es entonces una cadena de celdas, cada una con su valor
+ya calculado y una receta pendiente para la siguiente.
+
+Traza de `replicas(5.0).take(4).toList`:
+
+| Paso | Qué ocurre | Celdas calculadas |
+|---|---|---|
+| Se llama `replicas(5.0)` | Se calcula `5.0`; la cola queda como receta | 1 |
+| `take(4)` | Pide 4 elementos; no calcula ninguno más por sí mismo | 1 |
+| `toList` pide el 2.º | Se ejecuta la receta: `redondear(5.0 * 0.8)` = `4.0` | 2 |
+| `toList` pide el 3.º | `redondear(4.0 * 0.8)` = `3.2` | 3 |
+| `toList` pide el 4.º | `redondear(3.2 * 0.8)` = `2.56` | 4 |
+| Se llega a 4 elementos | `take(4)` corta; la receta del 5.º **nunca se ejecuta** | 4 |
+
+La memoria que usa la secuencia es proporcional a las celdas que se **forzaron**,
+no a su longitud teórica, que es infinita. Por eso `take(4)` usa memoria para 4
+elementos, y `replicasSensibles(5.0, 3.0)` usa memoria para 4: los tres que
+superan el mínimo y el primero que no, que es el que hace parar a `takeWhile`.
+Cada celda se calcula una sola vez, porque la `LazyList` guarda su resultado.
+
+Lo que sí agotaría la memoria (o no terminaría) es materializar la secuencia
+completa: `replicas(5.0).toList`, `.length` o `.sum` recorren hasta el final de
+una secuencia que no lo tiene. Por eso en el código solo se usa `take` y
+`takeWhile` antes de `toList`.
+
+Una consecuencia de que cada valor se redondea a dos decimales es que la
+secuencia se estanca en 0.02 (o 0.01) y no baja de ahí: `redondear(0.02 * 0.8)` es
+`0.02`. Entonces `replicasSensibles` termina siempre que `minimo >= 0.02`, pero
+con un mínimo menor, como `0.0`, `takeWhile(_ > minimo)` nunca encuentra un
+elemento que lo detenga y el programa no termina.

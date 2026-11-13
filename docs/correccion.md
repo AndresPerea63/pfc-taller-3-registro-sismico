@@ -370,6 +370,91 @@ cumplen los resultados de los dos resúmenes.)
 
 
 
+## Punto 3
+
+Sea $\text{Reg}(R)$ el conjunto de regiones que aparecen en $R$, y sean
+
+$$C_R(g) = \left|\{s \in R \mid \text{reg}(s) = g\}\right|, \qquad M_R(g) = \max\{\text{mag}(s) \mid s \in R,\ \text{reg}(s) = g\}$$
+
+el conteo y la magnitud máxima de la región $g$. Del punto 2 se sabe que
+$\text{conteoPorRegion}(R)(g) = C_R(g)$ y $\text{magnitudMaxima}(R)(g) = M_R(g)$
+para todo $g \in \text{Reg}(R)$, y que esos mapas no tienen otras llaves.
+Además $g \in \text{Reg}(R) \iff C_R(g) \geq 1$, de modo que $M_R(g)$ está bien
+definido exactamente en $\text{Reg}(R)$.
+
+### `conteoSeguro`
+
+**Especificación:** para todo $g$ (conocido o no),
+$\text{conteoSeguro}(R)(g) = C_R(g)$, donde $C_R(g) = 0$ si $g \notin \text{Reg}(R)$.
+
+**Argumento:** hay dos casos.
+
+- $g \in \text{Reg}(R)$: la llave está en `conteoPorRegion(R)`, y
+  `withDefaultValue` no cambia los valores de las llaves presentes. El resultado
+  es $C_R(g)$.
+- $g \notin \text{Reg}(R)$: ningún sismo de $R$ tiene región $g$, así que
+  $C_R(g) = |\emptyset| = 0$. La llave no está en el mapa y `apply` devuelve el
+  valor por defecto, $0$. Coincide, y no se lanza excepción.
+
+### `maximaDe`
+
+**Especificación:**
+$\text{maximaDe}(R, g) = \text{Some}(M_R(g))$ si $g \in \text{Reg}(R)$, y
+$\text{None}$ si no.
+
+**Argumento:** `get` devuelve `Some(v)` si y solo si la llave está en el mapa, y
+`None` si no. Las llaves de `magnitudMaxima(R)` son exactamente $\text{Reg}(R)$,
+y el valor de la llave $g$ es $M_R(g)$. Por lo tanto el resultado es
+$\text{Some}(M_R(g))$ cuando $g \in \text{Reg}(R)$ y $\text{None}$ cuando no hay
+sismos de $g$.
+
+### `regionMasActiva`
+
+**Especificación:** $\text{regionMasActiva}(R) = \text{None}$ si $R = []$. Si no,
+$\text{Some}(g^\ast)$ con $g^\ast \in \text{Reg}(R)$ tal que
+
+$$C_R(g^\ast) = \max_{g \in \text{Reg}(R)} C_R(g) \quad \land \quad g^\ast = \min\{g \in \text{Reg}(R) \mid C_R(g) = C_R(g^\ast)\}$$
+
+donde $\min$ es el orden alfabético de los nombres.
+
+**Argumento:** sea $k(g) = (-C_R(g),\ g)$ la clave que usa `minByOption`, y sea
+$\prec$ el orden lexicográfico sobre pares, es decir
+
+$$(a, g) \prec (b, h) \iff a < b \ \lor\ (a = b \land g < h)$$
+
+1. $\prec$ es un orden total, porque lo son $<$ sobre los enteros y $<$ sobre los
+   nombres. Las claves de regiones distintas son distintas (difieren en el
+   segundo componente), así que sobre el conjunto finito
+   $\{k(g) \mid g \in \text{Reg}(R)\}$ el mínimo existe y es único si el conjunto
+   no es vacío.
+2. Sea $g^\ast$ la región cuya clave es la mínima. Para toda otra región $g$,
+   $k(g^\ast) \prec k(g)$, que significa
+   $-C_R(g^\ast) < -C_R(g)$, o bien $-C_R(g^\ast) = -C_R(g)$ y $g^\ast < g$.
+   Lo primero es $C_R(g^\ast) > C_R(g)$; lo segundo, un empate en el conteo que se
+   rompe a favor del menor nombre. Así $g^\ast$ tiene el conteo máximo y, entre
+   las de conteo máximo, el menor nombre.
+3. Si $R = []$, $\text{Reg}(R) = \emptyset$, el mapa es vacío y `minByOption`
+   devuelve `None`. Si $R \neq []$, hay al menos una región y devuelve
+   `Some(g*)`; el `.map` solo extrae el nombre.
+
+### El resultado no depende del orden de recorrido
+
+Los conteos $C_R(g)$ no cambian si se reordena $R$ (el tamaño de un
+multiconjunto no depende del orden). Y el mínimo de un conjunto finito bajo un
+orden total no depende del orden en que se enumeren sus elementos: $\min$ es
+conmutativo y asociativo. Por lo tanto, para todo reordenamiento $\pi(R)$,
+
+$$\text{regionMasActiva}(\pi(R)) = \text{regionMasActiva}(R)$$
+
+y lo mismo vale para $\text{conteoSeguro}$ y $\text{maximaDe}$, que dependen solo
+de $C_R$ y de $M_R$. El desempate alfabético es lo que hace que no importe cuál
+región se encuentre primero en el registro.
+
+Observación: "orden alfabético" es el orden natural de `String` en Scala, que
+compara por código de carácter. Con nombres que empiezan con mayúscula, como los
+del registro, coincide con el alfabético; las letras con tilde van después de la
+`z`.
+
 ## Punto 4
 
 ### `replicas`
@@ -467,3 +552,71 @@ Se realizaron siete pruebas unitarias para verificar:
 5. Que excluya los valores iguales al mínimo.
 6. Que cada nueva magnitud se redondee a dos decimales.
 7. Que devuelva una lista vacía cuando la magnitud inicial no supera el mínimo.
+
+
+## Punto 5
+
+### `informe`
+
+**Especificación:** para todo $g \in \text{Reg}(R)$,
+
+$$\text{informe}(R, u)(g) = \text{Resumen}\big(C_R(g),\ M_R(g),\ \left|\text{replicasSensibles}(M_R(g), u)\right|\big)$$
+
+y $\text{informe}(R, u)$ no tiene más llaves que $\text{Reg}(R)$.
+
+**Argumento:** la función transforma el mapa `porRegion(R)`, que por el punto 2
+tiene exactamente las llaves $\text{Reg}(R)$ y, en la llave $g$, la lista
+$S_g = [s \in R \mid \text{reg}(s) = g]$ (no vacía). `Map.map` con una función que
+conserva la llave produce un mapa con las mismas llaves. En la llave $g$:
+
+- `sismos.length` es $|S_g| = C_R(g)$.
+- `sismos.map(s => s.magnitud).max` es $\max\{\text{mag}(s) \mid s \in S_g\} = M_R(g)$.
+  El `max` está definido porque $S_g \neq []$.
+- `replicasSensibles(maxima, minimo).length` es
+  $|\text{replicasSensibles}(M_R(g), u)|$, por el argumento del punto 4 con
+  $m = M_R(g)$.
+
+Por lo tanto el valor en $g$ es el `Resumen` de la especificación. Con
+$R = []$ no hay llaves y el resultado es `Map()`.
+
+**Consistencia con los puntos anteriores.** Como la primera componente es
+$C_R(g)$ y la segunda $M_R(g)$, se cumple que
+$\text{informe}(R, u)$ restringido a esas componentes es `conteoPorRegion(R)` y
+`magnitudMaxima(R)`, respectivamente. Las pruebas lo verifican.
+
+**Se usa el sismo más fuerte.** La tercera componente depende de $M_R(g)$, el
+máximo de la región, y no del primer sismo que se encuentre. Si cambia el sismo
+más fuerte cambia la cantidad de réplicas, pero no si cambia el orden.
+
+### El resultado no depende del orden de recorrido
+
+Cada componente de $\text{informe}(R, u)(g)$ es función de $C_R(g)$, $M_R(g)$ y
+$u$. Los dos primeros no dependen del orden (punto 2), y la tercera componente
+es una función de $M_R(g)$ y $u$ únicamente. Para cualquier reordenamiento
+$\pi(R)$, entonces,
+
+$$\text{informe}(\pi(R), u) = \text{informe}(R, u)$$
+
+como igualdad de mapas (mismas llaves y mismos valores). Lo que sí cambia con el
+orden es el orden de iteración del mapa, que no hace parte de su igualdad.
+
+### Terminación de `replicasSensibles`
+
+El punto 5 usa `replicasSensibles`, así que su resultado es finito solo si
+`takeWhile(_ > minimo)` encuentra un elemento que lo detenga. Sea
+$x_0 = m$, $x_{n+1} = r(0.8\,x_n)$ con $r(x) = \text{round}(100x)/100$.
+
+- Mientras $x_n > 0.025$ se cumple $r(0.8\,x_n) \leq 0.8\,x_n + 0.005 < x_n$:
+  la secuencia decrece estrictamente. Desde $x_1$ los valores son múltiplos de
+  $0.01$, así que el decrecimiento es de al menos $0.01$ por paso y se llega a
+  $x_n \leq 0.025$, es decir $x_n \leq 0.02$, en una cantidad finita de pasos.
+- Para $u \geq 0.02$ existe entonces un $n$ con $x_n \leq u$, y `takeWhile` se
+  detiene. El resultado es finito.
+- Para $u < 0.02$ (por ejemplo $u = 0$) no se garantiza la terminación:
+  $r(0.8 \cdot 0.02) = 0.02$ y $r(0.8 \cdot 0.01) = 0.01$ son puntos fijos del
+  redondeo, así que $x_n$ se estanca en $0.02$ o en $0.01$. Si se estanca en un
+  valor mayor que $u$, `takeWhile(_ > u)` nunca encuentra un elemento que lo
+  detenga. Por ejemplo, desde $m = 5.0$ la secuencia se estanca en $0.02$, y con
+  $u = 0.019$ el programa no termina. El enunciado fija la fórmula de redondeo,
+  por lo que `informe` se debe usar con un mínimo $u \geq 0.02$, que es el caso
+  de las magnitudes sísmicas con sentido físico.
